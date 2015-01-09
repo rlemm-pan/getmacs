@@ -1,7 +1,6 @@
-#!/usr/local/bin/python
+#!/usr/bin/python
 
 import re, os, sys, getopt, getpass, time, argparse
-from optparse import OptionParser
 from jnpr.junos import Device
 from jnpr.junos.exception import *
 from jnpr.junos.factory import loadyaml, yaml
@@ -38,8 +37,8 @@ EthSwitchInterfaceView:
   fields:
     interface: ../../interface-name
     vlan_name: interface-vlan-name
-    vlan_tag: interface-vlan-member-tagid
-    tag: interface-vlan-member-tagness
+    tag: interface-vlan-member-tagid
+    interface_tag: interface-vlan-member-tagness
  
 VlanTable:
   rpc: get-vlan-information
@@ -70,105 +69,143 @@ ArpView:
     ip_address: ip-address
     l3_interface: interface-name"""
 
-yamlfile = open("yamlethtable.yml","wb")
+yamlfile = open("yamlfile.yml","wb")
 print  >>yamlfile,YamlTable
 yamlfile.close()
-globals().update( loadyaml('yamlethtable.yml'))
-
-
+globals().update( loadyaml('yamlfile.yml'))
 
 results = ''
 test = []
 macaddr = ''
-ipmacaddr = ''
-vlan = ''
+ipaddr = ''
 uname = ''
 upass = ''
 cert = ''
 exlinks = ''
 onedevice = ''
 start_time = time.time()
+untagged_port = 'Device is possibly connected to this port'
 
-f = open("iplist.txt")
-ip_list = f.readlines()
+parser = argparse.ArgumentParser(add_help=True)
 
-def syntax():
-  print ('\nUsage:\n--------------------------------------\nFull table using username/password:\n\n\tgetmacs.py -u <username> [-p <password>]\n\nFull table using Certlogin:\n\n\tgetmacs.py -c\n\nFull table and exclude interfaces:\n\n\tgetmacs.py -x <interface-name> -u <username> [-p <password>]\n\nSingle device:\n\n\tgetmacs.py -d <ip-address> -u <username> [-p <password>]\n\nMultiple devices:\n\n\tgetmacs.py -l <file> -u <username> [-p <password>]\n\nFind a Mac-Address:\n\n\tgetmacs.py -m <mac-address>\n\n')
+parser.add_argument("-x", action="store",
+                    help="Exclude Interface")
 
-try:
-  opts, args = getopt.getopt(sys.argv[1:],"achx:i:v:m:u:p:d:l:?", ["help"])
-except getopt.GetoptError as err:
-  print ('\nIncorrect usage - ') + str(err)
-  syntax()
-  sys.exit(2)
+parser.add_argument("-d", action="store",
+                    help="Specify Device")
 
-for o, a in opts:
-  if o == '-c':
-    cert = 1
-  elif o == '-x':
-    exlinks = a
-  elif o == '-i':
-    ipmacaddr = a
-  elif o == '-v':
-    vlan = a
-  elif o == '-m':
-    if not re.match("[0-9a-f]{2}([:])[0-9a-f]{2}(\\1[0-9a-f]{2}){4}$", a.lower()):
-      print ("\nPlease enter your MAC address in the form xx:xx:xx:xx:xx:xx using only letters a-f,\nnumbers 0-9, and colons as separators.\n")
-      sys.exit()
-    macaddr = a.lower()
-  elif o == '-u':
-    uname = a
-  elif o == '-p':
-    upass = a
-  elif o == '-d':
-    onedevice = a
-    singledevice = open("onedevice.txt","wb")
-    print >>singledevice, a
-    singledevice = open("onedevice.txt")
-    ip_list = singledevice.readlines()
-    singledevice.close()
-    os.remove("onedevice.txt")
-  elif o == '-l':
-    iplist = a
-    listips = open(iplist)
-    ip_list = listips.readlines()
-    listips.close()
-  elif o in ['-h','-?','--help']:
-    syntax()
-    sys.exit()
+parser.add_argument("-i", action="store",
+                    help="Find info with IP-Address")
+
+parser.add_argument("-l", action="store",
+                    help="Specify file containing Device-IP's (example:  -l filename.txt).  If not specified, iplist.txt will be used")
+
+parser.add_argument("-m", action="store",
+                    help="Find info with MAC-Address")
+
+parser.add_argument("-u", action="store",
+                    help="Login with username")
+
+parser.add_argument("-p", action="store",
+                    help="Login with password")
+
+parser.add_argument("-c", action="store_false",
+                    help="Login with Device Certificate")
+
+args = parser.parse_args()
+
+if args.c == False:
+  cert = 1
+if args.d:
+  onedevice = args.d
+  singledevice = open("onedevice.txt","wb")
+  print >>singledevice, onedevice
+  singledevice = open("onedevice.txt")
+  ip_list = singledevice.readlines()
+  singledevice.close()
+  os.remove("onedevice.txt")
+if args.i:
+  ipaddr = args.i
+if args.x:
+  exlinks = args.x
+if args.m:
+  macaddr = args.m
+if args.l:
+  iplist = args.l
+  listips = open(iplist)
+  ip_list = listips.readlines()
+  listips.close()
+elif not args.l:
+  f = open("iplist.txt")
+  ip_list = f.readlines()
+if args.u:
+  uname = args.u
+if args.p:
+  upass = args.p
 
 alldatafile = open("output.txt","wb")
 
 def printheader():
-  print >>alldatafile,'Device-IP'+'\t'.expandtabs(8)+'\t'+'Mac-Address'+'\t'.expandtabs(10)+'Interface'+'\t'.expandtabs(4)+'\t'+'Vlan-ID'+'\t'.expandtabs(6)+'\t'+'Vlan-Name'
-  print ('Device-IP'+'\t'.expandtabs(8)+'\t'+'Mac-Address'+'\t'.expandtabs(10)+'Interface'+'\t'.expandtabs(4)+'\t'+'Vlan-ID'+'\t'.expandtabs(6)+'\t'+'Vlan-Name')
+  print >>alldatafile,'Device'+'\t'.expandtabs(12)+'\t'+'Mac-Address'+'\t'.expandtabs(10)+'Interface'+'\t'.expandtabs(10)+'\t'+'IP-Address'+'\t'.expandtabs(6)+'\t'+'L3-Interface'+'\t'.expandtabs(4)+'\t'+'L3-Gateway-Address'+'\t'.expandtabs(4)+'\t'+'Vlan-ID'+'\t'.expandtabs(6)+'\t'+'Vlan-Name'
+  print 'Device'+'\t'.expandtabs(12)+'\t'+'Mac-Address'+'\t'.expandtabs(10)+'Interface'+'\t'.expandtabs(10)+'\t'+'IP-Address'+'\t'.expandtabs(6)+'\t'+'L3-Interface'+'\t'.expandtabs(4)+'\t'+'L3-Gateway-Address'+'\t'.expandtabs(4)+'\t'+'Vlan-ID'+'\t'.expandtabs(6)+'\t'+'Vlan-Name'
+
 
 def process_device(ip, **kwargs):
   dev = Device(ip, **kwargs)
+
+  def printipdata():
+    print >>alldatafile,ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(8)+'\t'.expandtabs(2)+'\t'+a.ip_address+'\t'.expandtabs(8)+'\t'+a.l3_interface+'\t'.expandtabs(12)+'\t'+v.l3_interface_address+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name
+    print ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(8)+'\t'.expandtabs(2)+'\t'+a.ip_address+'\t'.expandtabs(8)+'\t'+a.l3_interface+'\t'.expandtabs(12)+'\t'+v.l3_interface_address+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name
+
+  def printxdata():
+    print >>alldatafile,ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(83)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name+'\t'.expandtabs(6)+'\t'
+    print ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(83)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name+'\t'.expandtabs(6)+'\t'
+
+  def printonexdata():
+    print >>alldatafile,ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(83)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name+'\t'.expandtabs(6)+'\t'+untagged_port
+    print ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(83)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name+'\t'.expandtabs(6)+'\t'+untagged_port
+
   try:
     dev.open()
+    arp_table = ArpTable(dev)
+    arp_table.get()
+    vlan_table = VlanTable(dev)
+    vlan_table.get()
     switch_table = EthSwitchTable(dev)
     switch_table.get()
-
+    switch_interface = EthSwitchInterfaceTable(dev)
+    switch_interface.get()
     if len(switch_table) > 0:
       for x in switch_table:
-        if macaddr != '':
-          if x.interface != exlinks:
-            if macaddr == x.mac_address:
-              print >>alldatafile,ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name
-              print (ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name)
-          elif x.interface != exlinks:
-            print >>alldatafile,ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name
-            print (ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name)
-        elif exlinks == '':
-          print >>alldatafile,ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name
-          print (ip.rstrip()+'\t'.expandtabs(8)+'\t'+x.mac_address+'\t'.expandtabs(4)+x.interface+'\t'.expandtabs(6)+'\t'+x.tag+'\t'.expandtabs(6)+'\t'+x.vlan_name)
+        for a in arp_table:
+          for v in vlan_table:
+            str=v.l3_interface
+            if ipaddr == a.ip_address and a.mac_address == x.mac_address and str.strip(' (UP)') == a.l3_interface:
+              printipdata()
+              for i in switch_interface:
+                if x.interface == i.interface and x.vlan_name == i.vlan_name:
+                  if i.interface_tag == 'untagged':
+                    printonexdata()
+            elif macaddr == a.mac_address and a.mac_address == x.mac_address and str.strip(' (UP)') == a.l3_interface:
+              printipdata()
+            else:
+              if macaddr =='' and ipaddr == '':
+                if a.mac_address == x.mac_address and str.strip(' (UP)') == a.l3_interface:
+                  printipdata()
+        if x.mac_address != '' and macaddr == '' and ipaddr =='':
+          printxdata()
+        if macaddr == x.mac_address:
+          for i in switch_interface:
+            if macaddr != '':
+              if x.interface == i.interface and macaddr == x.mac_address and x.vlan_name == i.vlan_name:
+                if i.interface_tag == 'untagged':
+                  printonexdata()
     else:
-      print ('\nNo table entries for this device.\n\n')
+      print '\nNo table entries for this device: '+ip.rstrip()+'\n'
 
   except RpcError:
     print >>alldatafile,ip.rstrip(),'was Skipped due to RPC Error.  Device is not EX/Branch-SRX Series'
-    print (ip.rstrip(),'was Skipped due to RPC Error.  Device is not EX/Branch-SRX Series')
+    print ip.rstrip(),'was Skipped due to RPC Error.  Device is not EX/Branch-SRX Series'
     dev.close()
   dev.close()
 
@@ -178,7 +215,7 @@ def runcert(ip):
   return result
 
 def multiRuncert():
-  pool = ThreadPool(cpu_count()*8)
+  pool = ThreadPool(cpu_count()*16)
   global ip_list
   global results
   results = pool.map_async(runcert, ip_list)
@@ -191,7 +228,7 @@ def runuser(ip):
   return result
 
 def multiRunuser():
-  pool = ThreadPool(cpu_count()*8)
+  pool = ThreadPool(cpu_count()*16)
   global ip_list
   global results
   results = pool.map_async(runuser, ip_list)
@@ -203,8 +240,8 @@ def onefn(runner):
   printheader()
   runner()
   alldatafile.close()
-  os.remove("yamlethtable.yml")  
-  print ("--- {0} seconds ---").format(time.time() - start_time)
+  os.remove("yamlfile.yml")  
+  print "--- {0} seconds ---".format(time.time() - start_time)
   sys.exit()
 
 if cert:
