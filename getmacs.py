@@ -136,11 +136,12 @@ if args.m:
 if args.l:
     iplist = args.l
     listips = open(iplist)
-    ip_list = listips.readlines()
+    with listips as f:
+        ip_list = [line.rstrip() for line in f]
     listips.close()
 elif not args.l and not args.d:
-    f = open("iplist.txt")
-    ip_list = f.readlines()
+    with open('iplist.txt') as f:
+        ip_list = [line.rstrip() for line in f]
 if args.u:
     uname = args.u
 if args.p:
