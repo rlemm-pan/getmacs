@@ -1,0 +1,3 @@
+Device              Mac-Address         Interface           IP-Address          L3-Interface        L3-Gateway-Address  Vlan-ID             Vlan-Name           Notes               
+192.168.0.1         f0:4d:a2:0a:07:67   ge-0/0/5.0          192.168.0.72        vlan.10             192.168.0.1/24      10                  Home                                    
+192.168.0.1         f0:4d:a2:0a:07:67   ge-0/0/5.0                                                                      10                  Home                Device could be connected to this port

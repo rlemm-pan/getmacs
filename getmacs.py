@@ -91,7 +91,7 @@ cert = ''
 exlinks = ''
 onedevice = ''
 start_time = time.time()
-untagged_port = 'Device has a possible connection to this port'
+untagged_port = 'Device could be connected to this port'
 
 parser = argparse.ArgumentParser(add_help=True)
 
@@ -151,7 +151,6 @@ alldatafile = open("output.txt", "wb")
 
 formatter = "{0:<20}{1:<20}{2:<20}{3:<20}{4:<20}{5:<20}{6:<20}{7:<20}{8:<20}"
 
-
 def printheader():
     header = formatter.format('Device', 'Mac-Address', 'Interface', 'IP-Address', 'L3-Interface', 'L3-Gateway-Address', 'Vlan-ID', 'Vlan-Name', 'Notes')
     alldatafile.write(header + '\n')
@@ -188,7 +187,9 @@ def process_device(ip, **kwargs):
                             for i in switch_interface:
                                 if x.interface == i.interface and x.vlan_name == i.vlan_name:
                                     if i.interface_tag == 'untagged':
-                                        print_data(ip.rstrip(), x.mac_address, x.interface, '', '', '', x.tag, x.vlan_name, untagged_port)
+                                        print_data(ip.rstrip(), x.mac_address, x.interface, '', '', '', x.tag, x.vlan_name, i.interface_tag)
+                                    elif i.interface_tag == 'tagged':
+                                        print_data(ip.rstrip(), x.mac_address, x.interface, '', '', '', x.tag, x.vlan_name, i.interface_tag)
                         elif macaddr == a.mac_address and a.mac_address == x.mac_address and str.strip(' (UP)') == a.l3_interface:
                             print_data(ip.rstrip(), x.mac_address, x.interface, a.ip_address, a.l3_interface, v.l3_interface_address, x.tag, x.vlan_name, '')
                         else:
@@ -256,7 +257,7 @@ def onefn(runner):
     printheader()
     runner()
     alldatafile.close()
-    print "--- {0} seconds ---".format(time.time() - start_time)
+#    print "--- {0} seconds ---".format(time.time() - start_time)
     sys.exit()
 
 if cert:
